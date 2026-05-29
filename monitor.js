@@ -1,4 +1,7 @@
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('child_process');
 
 const CASA = 'CMSAOLUIS';
 const BASE = 'https://www.cmsaoluis.ma.gov.br';
@@ -191,14 +194,40 @@ async function enviarEmail(novas, alertas = []) {
     alertas.forEach(a => console.log('[ALERTA_SEQUENCIA] ' + a.tipo + '/' + a.ano + ': ' + a.anterior + ' -> ' + a.atual + '; faltantes: ' + a.faltantes.join(', ')));
     return;
   }
+  const linhas = novas.map(p => '<tr><td style="padding:8px;border-bottom:1px solid #eee"><a href="' + escapeHtml(p.link) + '"><strong>' + escapeHtml(p.identificacao) + '</strong></a><br><span style="font-size:11px;color:#667085">ID ' + escapeHtml(p.id) + ' | ' + escapeHtml(p.tipo) + '</span></td><td style="padding:8px;border-bottom:1px solid #eee">' + escapeHtml(p.autor || '-') + '</td><td style="padding:8px;border-bottom:1px solid #eee">' + escapeHtml(p.situacao || '-') + '</td><td style="padding:8px;border-bottom:1px solid #eee">' + escapeHtml(p.ementa || '-') + '</td></tr>').join('');
+  const subject = '🏛️ São Luís: ' + novas.length + ' nova(s) proposição(ões)' + (alertas.length ? ' | alerta sequência' : '') + ' — ' + new Date().toLocaleDateString('pt-BR');
+  const html = '<div style="font-family:Arial,sans-serif;max-width:980px"><h2>São Luís — ' + novas.length + ' nova(s) proposição(ões)</h2>' + renderAlertasSaltos(alertas) + '<p>Lista normalizada por ID interno da matéria, para contornar a ordenação ruim do site.</p><table style="border-collapse:collapse;width:100%">' + linhas + '</table><p><a href="' + BASE + '/atividade-legislativa/proposicoes">Fonte oficial</a></p></div>';
+
+  if (process.env.USE_GMAIL_API === '1') {
+    const tmp = path.join(os.tmpdir(), 'saoluis-email-' + Date.now() + '.html');
+    fs.writeFileSync(tmp, html);
+    const script = [
+      'import sys',
+      "sys.path.insert(0, '/root/.openclaw/workspace/agents/shared')",
+      'from notificacoes import enviar_email',
+      'subject = sys.argv[1]',
+      'html_path = sys.argv[2]',
+      'destinos = [d.strip() for d in sys.argv[3].split(",") if d.strip()]',
+      "body = open(html_path, encoding='utf-8').read()",
+      'ok = enviar_email(subject, body, destinatarios=destinos)',
+      'raise SystemExit(0 if ok else 1)',
+    ].join('\n');
+    const result = spawnSync('python3', ['-c', script, subject, tmp, process.env.EMAIL_DESTINO || 'tramitacao@monitorlegislativo.com.br'], { encoding: 'utf8' });
+    fs.rmSync(tmp, { force: true });
+    if (result.status !== 0) {
+      throw new Error('Falha no envio via Gmail API: ' + (result.stderr || result.stdout || 'sem detalhe'));
+    }
+    console.log('Email enviado via Gmail API com ' + novas.length + ' proposições novas.');
+    return;
+  }
+
   const nodemailer = require('nodemailer');
   const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_REMETENTE, pass: process.env.EMAIL_SENHA } });
-  const linhas = novas.map(p => '<tr><td style="padding:8px;border-bottom:1px solid #eee"><a href="' + escapeHtml(p.link) + '"><strong>' + escapeHtml(p.identificacao) + '</strong></a><br><span style="font-size:11px;color:#667085">ID ' + escapeHtml(p.id) + ' | ' + escapeHtml(p.tipo) + '</span></td><td style="padding:8px;border-bottom:1px solid #eee">' + escapeHtml(p.autor || '-') + '</td><td style="padding:8px;border-bottom:1px solid #eee">' + escapeHtml(p.situacao || '-') + '</td><td style="padding:8px;border-bottom:1px solid #eee">' + escapeHtml(p.ementa || '-') + '</td></tr>').join('');
   await transporter.sendMail({
     from: '"Monitor ' + CASA + '" <' + process.env.EMAIL_REMETENTE + '>',
     to: process.env.EMAIL_DESTINO,
-    subject: '🏛️ São Luís: ' + novas.length + ' nova(s) proposição(ões)' + (alertas.length ? ' | alerta sequência' : '') + ' — ' + new Date().toLocaleDateString('pt-BR'),
-    html: '<div style="font-family:Arial,sans-serif;max-width:980px"><h2>São Luís — ' + novas.length + ' nova(s) proposição(ões)</h2>' + renderAlertasSaltos(alertas) + '<p>Lista normalizada por ID interno da matéria, para contornar a ordenação ruim do site.</p><table style="border-collapse:collapse;width:100%">' + linhas + '</table><p><a href="' + BASE + '/atividade-legislativa/proposicoes">Fonte oficial</a></p></div>',
+    subject,
+    html,
   });
 }
 
@@ -210,6 +239,11 @@ async function enviarEmail(novas, alertas = []) {
   const novas = proposicoes.filter(p => !ids.has(p.id));
   const { alertas, atuais } = detectarSaltos(proposicoes, estado);
   console.log('Total: ' + proposicoes.length + ' | Novas: ' + novas.length);
+  if (process.env.DRY_RUN_EMAIL === '1') {
+    await enviarEmail(novas, alertas);
+    console.log('DRY_RUN_EMAIL=1 — estado preservado sem alterações.');
+    return;
+  }
   if (process.env.SEED_ONLY === '1') {
     proposicoes.forEach(p => ids.add(p.id));
     estado.proposicoes_vistas = Array.from(ids);
