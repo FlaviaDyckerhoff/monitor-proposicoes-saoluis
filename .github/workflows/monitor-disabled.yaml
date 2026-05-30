@@ -1,0 +1,15 @@
+name: Monitor Proposicoes Sao Luis - disabled
+
+on:
+  workflow_dispatch:
+
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Production runs locally
+        run: |
+          echo "Monitor Sao Luis does not run on GitHub Actions."
+          echo "Production runs on the VPS cron with Gmail API:"
+          echo "/root/.openclaw/workspace/projects/monitor-proposicoes-saoluis/run_monitor_saoluis.sh"
+          echo "Do not use the old SMTP Action; GitHub SMTP secrets are intentionally not used."
