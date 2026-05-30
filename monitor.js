@@ -213,17 +213,18 @@ function compararProposicoesEmail(a, b) {
   if (prioridadeA !== prioridadeB) return prioridadeA - prioridadeB;
   const tipoCmp = String(tipoA).localeCompare(String(tipoB), 'pt-BR');
   if (tipoCmp !== 0) return tipoCmp;
-  return numeroProposicaoEmail(b) - numeroProposicaoEmail(a);
+  return numeroProposicaoEmail(a) - numeroProposicaoEmail(b);
 }
 
 async function enviarEmail(novas, alertas = []) {
+  const novasOrdenadas = [...novas].sort(compararProposicoesEmail);
+
   if (process.env.DRY_RUN_EMAIL === '1') {
     console.log('[DRY_RUN_EMAIL] ' + novas.length + ' proposições novas.');
-    novas.slice(0, 20).forEach(p => console.log(p.identificacao + ' - id ' + p.id + ' - ' + p.autor + ' - ' + p.link));
+    novasOrdenadas.slice(0, 20).forEach(p => console.log(p.identificacao + ' - id ' + p.id + ' - ' + p.autor + ' - ' + p.link));
     alertas.forEach(a => console.log('[ALERTA_SEQUENCIA] ' + a.tipo + '/' + a.ano + ': ' + a.anterior + ' -> ' + a.atual + '; faltantes: ' + a.faltantes.join(', ')));
     return;
   }
-  const novasOrdenadas = [...novas].sort(compararProposicoesEmail);
   const linhas = novasOrdenadas.map(p => '<tr><td style="padding:8px;border-bottom:1px solid #eee"><a href="' + escapeHtml(p.link) + '"><strong>' + escapeHtml(p.identificacao) + '</strong></a><br><span style="font-size:11px;color:#667085">ID ' + escapeHtml(p.id) + ' | ' + escapeHtml(p.tipo) + '</span></td><td style="padding:8px;border-bottom:1px solid #eee">' + escapeHtml(p.autor || '-') + '</td><td style="padding:8px;border-bottom:1px solid #eee">' + escapeHtml(p.situacao || '-') + '</td><td style="padding:8px;border-bottom:1px solid #eee">' + escapeHtml(p.ementa || '-') + '</td></tr>').join('');
   const subject = '🏛️ São Luís: ' + novas.length + ' nova(s) proposição(ões)' + (alertas.length ? ' | alerta sequência' : '') + ' — ' + new Date().toLocaleDateString('pt-BR');
   const html = '<div style="font-family:Arial,sans-serif;max-width:980px"><h2>São Luís — ' + novas.length + ' nova(s) proposição(ões)</h2>' + renderAlertasSaltos(alertas) + '<p>Lista normalizada por ID interno da matéria, para contornar a ordenação ruim do site.</p><table style="border-collapse:collapse;width:100%">' + linhas + '</table><p><a href="' + BASE + '/atividade-legislativa/proposicoes">Fonte oficial</a></p></div>';
