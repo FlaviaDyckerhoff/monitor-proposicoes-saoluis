@@ -1,3 +1,13 @@
+const FICHA_URL = process.env.FICHA_URL || 'https://doe.monitorlegislativo.com.br/ficha';
+
+function fichaEmailButtonHtml() {
+  return '<div style="background:#eef6ff;border:1px solid #c7ddf2;border-radius:6px;padding:11px 13px;margin:12px 0;color:#173d63;font-size:13px;line-height:1.45">' +
+    '<strong>Ficha</strong><br>' +
+    '<span>Cole o link oficial de uma proposição para criar ficha e acelerar a revisão/cadastro.</span><br>' +
+    '<a href="' + FICHA_URL + '" style="display:inline-block;background:#0f3d5c;color:white;text-decoration:none;border-radius:4px;padding:8px 11px;font-weight:bold;margin-top:8px">Criar ficha</a>' +
+    '</div>';
+}
+
 const CONTROLE03_FORCE_LATEST = String(process.env.CONTROLE03_FORCE_LATEST || '').trim() === '1';
 const fs = require('fs');
 const os = require('os');
@@ -260,7 +270,7 @@ const CLIENTES_NOMES_PROPRIOS = [
   'Wild Fork', 'Ajinomoto', 'Vibra', 'Vibra Energia',
   'BR Distribuidora', 'Raízen', 'Raizen', 'Mindlab',
   'ABVTEX', 'Semove', 'Barcas', 'Seta',
-  'Nova Infra', 'BRT'
+  'Nova Infra'
 ];
 
 const CLIENTES_INATIVOS_NAO_DESTACAR = [
@@ -381,6 +391,20 @@ function radar03Numero(p) {
   }
   const m = radar03Identificacao(p).match(/(S\/N|\d+\s*\/\s*\d{2,4}|\/\d{2,4}|\d+)/i);
   return m ? m[1].replace(/\s+/g, '') : '';
+}
+
+function radar03NumeroPartes(p) {
+  const raw = radar03Numero(p);
+  const match = String(raw || '').match(/(\d+)\s*(?:\/\s*(\d{2,4}))?/);
+  if (!match) return null;
+  const numero = match[1];
+  const ano = match[2] || String(p?.ano || p?.ano_proposicao || new Date().getFullYear());
+  const anoFull = ano.length === 2 ? '20' + ano : ano;
+  return {
+    numero,
+    numeroInt: Number.parseInt(numero, 10),
+    ano: anoFull,
+  };
 }
 
 function radar03BlocoEmail(novas) {
@@ -639,7 +663,7 @@ async function enviarEmail(novas, alertas = []) {
     from: '"Monitor ' + CASA + '" <' + process.env.EMAIL_REMETENTE + '>',
     to: process.env.EMAIL_DESTINO,
     subject,
-    html,
+    html: fichaEmailButtonHtml() + html,
   });
 }
 
@@ -647,7 +671,8 @@ async function enviarEmail(novas, alertas = []) {
   console.log('Iniciando Monitor Proposições São Luís...');
   const estado = carregarEstado();
   const ids = new Set((estado.proposicoes_vistas || []).map(String));
-  const proposicoes = await buscarProposicoes(ids);
+  const idsBusca = CONTROLE03_FORCE_LATEST ? new Set() : ids;
+  const proposicoes = await buscarProposicoes(idsBusca);
   const novas = proposicoes.filter(p => !ids.has(p.id));
   const { alertas, atuais } = detectarSaltos(proposicoes, estado);
   console.log('Total: ' + proposicoes.length + ' | Novas: ' + novas.length);
@@ -664,6 +689,16 @@ async function enviarEmail(novas, alertas = []) {
     estado.ultima_execucao = new Date().toISOString();
     salvarEstado(estado);
     console.log('SEED_ONLY=1 — estado semeado sem envio.');
+    return;
+  }
+  if (CONTROLE03_FORCE_LATEST) {
+    await sincronizarRadar03(novas.length ? novas : proposicoes.slice(0, 80));
+    novas.forEach(p => ids.add(p.id));
+    estado.proposicoes_vistas = Array.from(ids);
+    estado.ultimos_por_tipo_ano = { ...(estado.ultimos_por_tipo_ano || {}), ...atuais };
+    estado.ultima_execucao = new Date().toISOString();
+    salvarEstado(estado);
+    console.log('✅ Radar 03 atualizado fora de hora com a lista atual da fonte. Email não enviado.');
     return;
   }
   if (novas.length || alertas.length) {
