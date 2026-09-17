@@ -9,6 +9,7 @@ function fichaEmailButtonHtml() {
 }
 
 const CONTROLE03_FORCE_LATEST = String(process.env.CONTROLE03_FORCE_LATEST || '').trim() === '1';
+const DRY_RUN = process.env.DRY_RUN === '1';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -587,7 +588,7 @@ async function sincronizarRadar03(novas) {
     });
 
     const postResp = await fetch(CONTROLE03_STATE_URL, {
-      method: 'POST', headers: radar03AuthHeaders(), body: JSON.stringify({ data, merge_casas: [CASA_RADAR03] }),
+      method: 'POST', headers: radar03AuthHeaders(), body: JSON.stringify({ data: [casa], merge_casas: [CASA_RADAR03] }),
     });
     if (!postResp.ok) throw new Error('POST ' + postResp.status);
     console.log('✅ Radar 03 sincronizado: ' + CASA_RADAR03 + ' · ' + resumo.map(item => item.tipo + ' ' + item.numero + '/' + item.ano).join(' | '));
@@ -697,6 +698,10 @@ async function enviarEmail(novas, alertas = []) {
   const novas = proposicoes.filter(p => !ids.has(p.id));
   const { alertas, atuais } = detectarSaltos(proposicoes, estado);
   console.log('Total: ' + proposicoes.length + ' | Novas: ' + novas.length);
+  if (DRY_RUN) {
+    console.log(JSON.stringify({ total: proposicoes.length, novas: novas.length, alertas: alertas.length, amostra: novas.slice(0, 10) }, null, 2));
+    return;
+  }
   if (process.env.DRY_RUN_EMAIL === '1') {
     await sincronizarRadar03(novas);
     await enviarEmail(novas, alertas);
