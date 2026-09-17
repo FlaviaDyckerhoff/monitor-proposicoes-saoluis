@@ -10,6 +10,7 @@ git rebase origin/main
 
 export USE_GMAIL_API=1
 export CONTROLE03_STATE_URL="${CONTROLE03_STATE_URL:-http://127.0.0.1:5017/controle03/api/state}"
+export CONTROLE03_BASIC_AUTH="${CONTROLE03_BASIC_AUTH:-Basic controle03bot}"
 export EMAIL_DESTINO="${EMAIL_DESTINO:-tramitacao@monitorlegislativo.com.br}"
 
 node monitor.js

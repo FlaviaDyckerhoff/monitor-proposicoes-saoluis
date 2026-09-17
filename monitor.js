@@ -593,7 +593,7 @@ async function sincronizarRadar03(novas) {
     if (!postResp.ok) throw new Error('POST ' + postResp.status);
     console.log('✅ Radar 03 sincronizado: ' + CASA_RADAR03 + ' · ' + resumo.map(item => item.tipo + ' ' + item.numero + '/' + item.ano).join(' | '));
   } catch (err) {
-    console.warn('⚠️ Não foi possível sincronizar o Radar 03 automaticamente: ' + err.message);
+    throw new Error('Não foi possível sincronizar o Radar 03 automaticamente: ' + err.message);
   }
 }
 
